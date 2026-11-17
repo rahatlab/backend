@@ -165,7 +165,7 @@ eventRouter.get("/:id", async (req, res) => {
   }
 
   const participants = await joins().countDocuments({ eventId: id });
-  res.json({ ...event, participants });
+  res.json({ ...normalizeEvents([event])[0], participants });
 });
 
 /* ------------------------------------------------------------------ update */
