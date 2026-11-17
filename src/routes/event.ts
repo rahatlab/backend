@@ -74,12 +74,12 @@ eventRouter.post("/", requireAuth, async (req, res) => {
   res.status(201).json({ _id: result.insertedId, ...doc });
 });
 
-/* ------------------------------------------------- upcoming (public, no past) */
+/* ------------------------------------------------- upcoming (all events, date asc) */
 eventRouter.get("/", async (_req, res) => {
   const type = param(_req.query.type);
   const search = param(_req.query.search);
 
-  const filter: Record<string, unknown> = { date: { $gte: todayStr() } };
+  const filter: Record<string, unknown> = {};
 
   if (type) {
     filter.type = type;
@@ -96,6 +96,16 @@ eventRouter.get("/", async (_req, res) => {
   const list = await events()
     .find(filter)
     .sort({ date: 1 })
+    .toArray();
+  res.json(list);
+});
+
+/* ------------------------------------------------- past events (moments from field) */
+eventRouter.get("/past", async (_req, res) => {
+  const list = await events()
+    .find({ date: { $lt: todayStr() } })
+    .sort({ date: -1 })
+    .limit(6)
     .toArray();
   res.json(list);
 });
