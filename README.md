@@ -57,23 +57,73 @@ npm run dev             # http://localhost:5000
 | `NODE_ENV`             | `development` / `production`                                     |
 | `MONGODB_URI`          | MongoDB Atlas connection string                                  |
 | `MONGODB_DB_NAME`      | Database name (`events-platform`)                                |
-| `BETTER_AUTH_SECRET`   | BetterAuth signing secret                                        |
-| `BETTER_AUTH_URL`      | Public base URL of this API (`http://localhost:5000` in dev)     |
-| `CLIENT_URL`           | Comma separated allowed client origins (CORS + auth cookies)     |
+| `BETTER_AUTH_SECRET`   | BetterAuth signing secret (generate a long random string)        |
+| `BETTER_AUTH_URL`      | Public base URL of this API (`http://localhost:5000` in dev, `https://backend-cg3q.onrender.com` in prod) |
+| `CLIENT_URL`           | Comma separated allowed client origins (CORS + auth cookies). Production: `https://event-switch.vercel.app,http://localhost:3000` |
 | `JWT_SECRET`           | Secret for our own access tokens                                 |
 | `JWT_EXPIRES_IN`       | Token lifetime (e.g. `7d`)                                       |
 | `GOOGLE_CLIENT_ID`     | Optional — leave empty to hide the Google sign-in button         |
 | `GOOGLE_CLIENT_SECRET` | Optional — Google OAuth secret                                   |
 
+## Authentication Architecture (BetterAuth)
+
+### Files
+
+- `src/lib/auth.ts` — BetterAuth instance configuration (baseURL, secret, social providers, trustedOrigins, cookie attributes)
+- `src/routes/auth.ts` — Custom auth routes (`/config`, `/session`) mounted before the BetterAuth catch-all
+- `src/index.ts` — Express app with CORS and route mounting order
+
+### How Google OAuth works
+
+1. User clicks "Sign in with Google" on the frontend
+2. `authClient.signIn.social({ provider: "google", callbackURL })` redirects to Google's OAuth consent page
+3. After the user consents, Google redirects to BetterAuth's callback route: `GET /api/auth/callback/google`
+4. BetterAuth verifies the `state` parameter (prevents CSRF) and creates/links the user account
+5. BetterAuth sets a session cookie (`SameSite=None; Secure` for cross-domain)
+6. The client is redirected back to `callbackURL` (the frontend origin)
+7. The frontend calls `GET /api/auth/session` to exchange the BetterAuth session for our own JWT
+
+### Cross-domain cookie configuration
+
+Because the frontend (Vercel) and backend (Render) are on different domains, the session cookie must be configured for cross-site use:
+
+```ts
+advanced: {
+  useSecureCookies: true,
+  defaultCookieAttributes: {
+    sameSite: "none" as const,
+    secure: true,
+  },
+},
+```
+
+This is applied only when `NODE_ENV=production`.
+
+### Google Cloud Console setup
+
+1. Go to **APIs & Services → Credentials**
+2. Select your OAuth 2.0 Client ID
+3. Under **Authorized redirect URIs**, click **+ Add URI**
+4. Add: `https://backend-cg3q.onrender.com/api/auth/callback/google`
+5. Click **Save** (propagation takes 5–60 minutes)
+
+### CORS configuration
+
+CORS is configured in `src/index.ts` with:
+- `origin`: from `CLIENT_URL` env var (comma-separated list)
+- `credentials: true` — required for cookies to be sent cross-origin
+- `allowedHeaders: ["Content-Type", "Authorization"]`
+
 ## Deploy (Render)
 
 1. Create a Web Service from this folder; build command `npm install && npm run build`,
    start command `npm start`.
-2. Set every variable above. In production `BETTER_AUTH_URL` and
+2. Set every environment variable above. In production `BETTER_AUTH_URL` and
    `CLIENT_URL` must be the real `https` URLs of the API and the client
    (cookies are `SameSite=None; Secure` so they work cross-site).
 3. Add the Render URL to Google Cloud Console's authorised redirect URIs if you
    use Google sign-in.
+4. Render auto-deploys on every push to GitHub.
 
 ## Scripts
 
