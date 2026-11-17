@@ -84,7 +84,7 @@ function normalizeEvents(list: EventDoc[]): EventDoc[] {
   }));
 }
 
-/* ------------------------------------------------- upcoming (all events, date asc) */
+/* ------------------------------------------------- all events: future first (asc), past last (desc) */
 eventRouter.get("/", async (_req, res) => {
   const type = param(_req.query.type);
   const search = param(_req.query.search);
@@ -105,9 +105,18 @@ eventRouter.get("/", async (_req, res) => {
 
   const list = await events()
     .find(filter)
-    .sort({ date: 1 })
     .toArray();
-  res.json(normalizeEvents(list));
+
+  const normalized = normalizeEvents(list);
+  const today = todayStr();
+  const future = normalized
+    .filter((e) => e.date >= today)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const past = normalized
+    .filter((e) => e.date < today)
+    .sort((a, b) => (b.date < a.date ? -1 : 1));
+
+  res.json([...future, ...past]);
 });
 
 /* ------------------------------------------------- past events (moments from field) */
