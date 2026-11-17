@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { ObjectId, type Collection, type Document } from "mongodb";
 import { db } from "../lib/db.js";
-import { todayStr } from "../lib/dates.js";
+import { todayStr, normalizeDate } from "../lib/dates.js";
 import { createEventSchema, updateEventSchema, joinSchema } from "../schemas/event.js";
 import { requireAuth, type AuthedRequest } from "../middleware/require-auth.js";
 
@@ -65,6 +65,7 @@ eventRouter.post("/", requireAuth, async (req, res) => {
 
   const doc: EventDoc = {
     ...input,
+    date: normalizeDate(input.date),
     creatorEmail: user.sub,
     creatorName: user.name,
     createdAt: new Date(),
@@ -175,7 +176,12 @@ eventRouter.patch("/:id", requireAuth, async (req, res) => {
   const input = parseBody(updateEventSchema, req.body, res);
   if (!input) return;
 
-  await events().updateOne({ _id: id }, { $set: input });
+  const updateData: Record<string, unknown> = { ...input };
+  if (input.date) {
+    updateData.date = normalizeDate(input.date);
+  }
+
+  await events().updateOne({ _id: id }, { $set: updateData });
   const updated = await events().findOne({ _id: id });
   res.json(updated);
 });
