@@ -75,6 +75,15 @@ eventRouter.post("/", requireAuth, async (req, res) => {
   res.status(201).json({ _id: result.insertedId, ...doc });
 });
 
+/** Normalize date strings on every event so string comparison works
+ *  correctly regardless of how the date was originally stored. */
+function normalizeEvents(list: EventDoc[]): EventDoc[] {
+  return list.map((event) => ({
+    ...event,
+    date: normalizeDate(event.date),
+  }));
+}
+
 /* ------------------------------------------------- upcoming (all events, date asc) */
 eventRouter.get("/", async (_req, res) => {
   const type = param(_req.query.type);
@@ -98,27 +107,29 @@ eventRouter.get("/", async (_req, res) => {
     .find(filter)
     .sort({ date: 1 })
     .toArray();
-  res.json(list);
+  res.json(normalizeEvents(list));
 });
 
 /* ------------------------------------------------- past events (moments from field) */
 eventRouter.get("/past", async (_req, res) => {
   const list = await events()
-    .find({ date: { $lt: todayStr() } })
-    .sort({ date: -1 })
-    .limit(6)
+    .find()
+    .sort({ date: 1 })
     .toArray();
-  res.json(list);
+  const normalized = normalizeEvents(list);
+  const past = normalized.filter((e) => e.date < todayStr());
+  res.json(past.slice(0, 6));
 });
 
 /* --------------------------------------- recent 6 for the home page (limit()) */
 eventRouter.get("/recent", async (_req, res) => {
   const list = await events()
-    .find({ date: { $gte: todayStr() } })
+    .find()
     .sort({ date: 1 })
-    .limit(6)
     .toArray();
-  res.json(list);
+  const normalized = normalizeEvents(list);
+  const upcoming = normalized.filter((e) => e.date >= todayStr());
+  res.json(upcoming.slice(0, 6));
 });
 
 /* ------------------------------------------- events created by the caller */
@@ -224,7 +235,8 @@ eventRouter.post("/:id/join", requireAuth, async (req, res) => {
     res.status(404).json({ error: "Event not found" });
     return;
   }
-  if (event.date < todayStr()) {
+  const eventDate = normalizeDate(event.date);
+  if (eventDate < todayStr()) {
     res.status(400).json({ error: "This event has already taken place" });
     return;
   }
