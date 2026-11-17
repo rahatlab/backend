@@ -41,9 +41,12 @@ function parseBody<T>(
   return result.data as T;
 }
 
-/** Express 5 types params as `string | string[]`, normalise to a single value. */
-function param(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+/** Express 5 types query values as `string | string[] | ParsedQs`, normalise to a single value. */
+function param(value: unknown): string {
+  if (Array.isArray(value)) {
+    return (value[0] as string) ?? "";
+  }
+  return typeof value === "string" ? value : "";
 }
 
 function toObjectId(id: string, res: { status: (code: number) => { json: (body: unknown) => unknown } }): ObjectId | null {
@@ -73,8 +76,25 @@ eventRouter.post("/", requireAuth, async (req, res) => {
 
 /* ------------------------------------------------- upcoming (public, no past) */
 eventRouter.get("/", async (_req, res) => {
+  const type = param(_req.query.type);
+  const search = param(_req.query.search);
+
+  const filter: Record<string, unknown> = { date: { $gte: todayStr() } };
+
+  if (type) {
+    filter.type = type;
+  }
+
+  if (search) {
+    filter.$or = [
+      { title: { $regex: search, $options: "i" } },
+      { description: { $regex: search, $options: "i" } },
+      { location: { $regex: search, $options: "i" } },
+    ];
+  }
+
   const list = await events()
-    .find({ date: { $gte: todayStr() } })
+    .find(filter)
     .sort({ date: 1 })
     .toArray();
   res.json(list);
